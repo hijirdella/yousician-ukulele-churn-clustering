@@ -6,6 +6,13 @@ import joblib
 st.set_page_config(page_title="Ukulele by Yousician - Churned User Clustering", layout="wide")
 st.title("🎵 Ukulele by Yousician - Churned User Clustering App")
 
+# === Mapping Label Klaster ===
+label_mapping = {
+    0: "Focused Achievers",
+    1: "Advanced Explorers",
+    2: "Casual Dropouts"
+}
+
 # === Pilih Mode Input ===
 input_mode = st.radio("Pilih Mode Input:", ["👤 Input Manual (1 Pengguna)", "📁 Upload CSV (Batch Pengguna)"])
 
@@ -26,8 +33,9 @@ if input_mode == "👤 Input Manual (1 Pengguna)":
     if st.button("🧭 Prediksi Cluster"):
         input_df = pd.DataFrame([user_input])
         input_scaled = scaler_1user.transform(input_df)
-        cluster = model_1user.predict(input_scaled)
-        st.success(f"✅ User ini diprediksi berada pada Cluster: {cluster[0]}")
+        cluster = model_1user.predict(input_scaled)[0]
+        label = label_mapping.get(cluster, f"Cluster {cluster}")
+        st.success(f"✅ User ini diprediksi berada pada Cluster: **{label}**")
 
 # === MODE 2: UPLOAD CSV UNTUK BANYAK USER ===
 else:
@@ -51,7 +59,9 @@ else:
             else:
                 X = df[feature_names_batch]
                 X_scaled = scaler_batch.transform(X)
-                df['Predicted_Cluster'] = model_batch.predict(X_scaled)
+                clusters = model_batch.predict(X_scaled)
+                df['Predicted_Cluster'] = clusters
+                df['Cluster_Label'] = df['Predicted_Cluster'].map(label_mapping)
 
                 st.success("📈 Cluster berhasil diprediksi untuk semua pengguna.")
                 st.dataframe(df)
