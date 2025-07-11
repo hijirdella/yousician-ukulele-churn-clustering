@@ -30,12 +30,17 @@ if input_mode == "👤 Input Manual (1 Pengguna)":
     for feat in feature_names_1user:
         user_input[feat] = st.number_input(f"{feat}", value=0.0)
 
+    predicted_churn = st.selectbox("Apakah Predicted_Churn user ini?", [1, 0])
+
     if st.button("🧭 Prediksi Cluster"):
-        input_df = pd.DataFrame([user_input])
-        input_scaled = scaler_1user.transform(input_df)
-        cluster = model_1user.predict(input_scaled)[0]
-        label = label_mapping.get(cluster, f"Cluster {cluster}")
-        st.success(f"✅ User ini diprediksi berada pada Cluster: **{label}**")
+        if predicted_churn == 1:
+            input_df = pd.DataFrame([user_input])
+            input_scaled = scaler_1user.transform(input_df)
+            cluster = model_1user.predict(input_scaled)[0]
+            label = label_mapping.get(cluster, f"Cluster {cluster}")
+            st.success(f"✅ User ini diprediksi churn dan berada pada Cluster: **{label}**")
+        else:
+            st.info("ℹ️ User ini tidak churn. Tidak dilakukan pemetaan klaster.")
 
 # === MODE 2: UPLOAD CSV UNTUK BANYAK USER ===
 else:
@@ -51,23 +56,31 @@ else:
     if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
-            st.write("📄 Preview Data:", df.head())
+            st.write("📄 Preview Data (semua user):", df.head())
 
-            # Validasi fitur
-            if not all(feat in df.columns for feat in feature_names_batch):
-                st.error("❌ Kolom fitur tidak lengkap. Harap pastikan nama kolom sesuai.")
+            # Validasi kolom
+            required_columns = set(feature_names_batch + ["Predicted_Churn"])
+            if not required_columns.issubset(set(df.columns)):
+                st.error(f"❌ File harus memuat kolom: {required_columns}")
             else:
-                X = df[feature_names_batch]
-                X_scaled = scaler_batch.transform(X)
-                clusters = model_batch.predict(X_scaled)
-                df['Predicted_Cluster'] = clusters
-                df['Cluster_Label'] = df['Predicted_Cluster'].map(label_mapping)
+                df_churn = df[df["Predicted_Churn"] == 1].copy()
 
-                st.success("📈 Cluster berhasil diprediksi untuk semua pengguna.")
-                st.dataframe(df)
+                if df_churn.empty:
+                    st.warning("⚠️ Tidak ada user dengan Predicted_Churn = 1.")
+                else:
+                    X = df_churn[feature_names_batch]
+                    X_scaled = scaler_batch.transform(X)
+                    clusters = model_batch.predict(X_scaled)
 
-                # Tombol download
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button("💾 Download Hasil", csv, "clustered_users.csv", "text/csv")
+                    df_churn['Predicted_Cluster'] = clusters
+                    df_churn['Cluster_Label'] = df_churn['Predicted_Cluster'].map(label_mapping)
+
+                    st.success(f"📈 {len(df_churn)} user churn berhasil diklasterisasi.")
+                    st.dataframe(df_churn)
+
+                    # Tombol download
+                    csv = df_churn.to_csv(index=False).encode('utf-8')
+                    st.download_button("💾 Download Hasil Churned Users", csv, "churned_clustered_users.csv", "text/csv")
+
         except Exception as e:
             st.error(f"⚠️ Terjadi kesalahan saat membaca file: {e}")
