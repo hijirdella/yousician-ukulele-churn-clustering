@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
 import joblib
+import matplotlib.pyplot as plt
+import seaborn as sns
+from sklearn.decomposition import PCA
 
 # === Konfigurasi Halaman ===
 st.set_page_config(page_title="Ukulele by Yousician - Churned User Clustering", layout="wide")
@@ -38,7 +41,7 @@ if input_mode == "👤 Input Manual (1 Pengguna)":
             input_scaled = scaler_1user.transform(input_df)
             cluster = model_1user.predict(input_scaled)[0]
             label = label_mapping.get(cluster, f"Cluster {cluster}")
-            st.success(f"✅ User ini diprediksi churn dan berada pada Cluster: **{label}**")
+            st.success(f"✅ User ini diprediksi **churn** dan berada pada Cluster: **{label}**")
         else:
             st.info("ℹ️ User ini tidak churn. Tidak dilakukan pemetaan klaster.")
 
@@ -60,7 +63,7 @@ else:
 
             # Validasi kolom
             required_columns = set(feature_names_batch + ["Predicted_Churn"])
-            if not required_columns.issubset(set(df.columns)):
+            if not required_columns.issubset(df.columns):
                 st.error(f"❌ File harus memuat kolom: {required_columns}")
             else:
                 df_churn = df[df["Predicted_Churn"] == 1].copy()
@@ -78,7 +81,36 @@ else:
                     st.success(f"📈 {len(df_churn)} user churn berhasil diklasterisasi.")
                     st.dataframe(df_churn)
 
-                    # Tombol download
+                    # === PCA Visualization ===
+                    st.markdown("### 🔍 Visualisasi PCA (2D)")
+                    pca = PCA(n_components=2)
+                    pca_result = pca.fit_transform(X_scaled)
+                    df_churn['PCA1'] = pca_result[:, 0]
+                    df_churn['PCA2'] = pca_result[:, 1]
+
+                    fig_pca, ax_pca = plt.subplots()
+                    sns.scatterplot(data=df_churn, x="PCA1", y="PCA2", hue="Cluster_Label", palette="Set2", s=60, ax=ax_pca)
+                    ax_pca.set_title("PCA - 2D Projection of Churned User Clusters")
+                    st.pyplot(fig_pca)
+
+                    # === Heatmap Visualization ===
+                    st.markdown("### 🌡️ Korelasi Antar Fitur")
+                    corr_matrix = df_churn[feature_names_batch].corr()
+                    fig_corr, ax_corr = plt.subplots(figsize=(10, 6))
+                    sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="coolwarm", ax=ax_corr)
+                    ax_corr.set_title("Correlation Heatmap")
+                    st.pyplot(fig_corr)
+
+                    # === Boxplot Segment Profiling ===
+                    st.markdown("### 📦 Segment Profile per Cluster")
+                    selected_features = st.multiselect("Pilih fitur yang ingin divisualisasikan:", feature_names_batch, default=feature_names_batch[:3])
+                    for feat in selected_features:
+                        fig_box, ax_box = plt.subplots()
+                        sns.boxplot(data=df_churn, x="Cluster_Label", y=feat, palette="Set2", ax=ax_box)
+                        ax_box.set_title(f"{feat} by Cluster")
+                        st.pyplot(fig_box)
+
+                    # === Download Button ===
                     csv = df_churn.to_csv(index=False).encode('utf-8')
                     st.download_button("💾 Download Hasil Churned Users", csv, "churned_clustered_users.csv", "text/csv")
 
