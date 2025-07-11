@@ -1,102 +1,63 @@
 import streamlit as st
-import joblib
 import pandas as pd
-from datetime import datetime
-import pytz
+import joblib
 
-# --- Load model dan komponen ---
-model = joblib.load('RidgeClassifier - Perfect Piano.pkl')
-vectorizer = joblib.load('tfidf_vectorizer_Perfect Piano.pkl')
-label_encoder = joblib.load('label_encoder_Perfect Piano.pkl')
+# === Konfigurasi Halaman ===
+st.set_page_config(page_title="Ukulele by Yousician - Churned User Clustering", layout="wide")
+st.title("🎵 Ukulele by Yousician - Churned User Clustering App")
 
-# --- Judul App ---
-st.title("🎹 Sentiment Analysis - Perfect Piano App")
+# === Pilih Mode Input ===
+input_mode = st.radio("Pilih Mode Input:", ["👤 Input Manual (1 Pengguna)", "📁 Upload CSV (Batch Pengguna)"])
 
-# --- Pilih Mode ---
-st.header("Pilih Metode Input")
-input_mode = st.radio("Mode Input:", ["📝 Input Manual", "📁 Upload CSV"])
+# === MODE 1: INPUT MANUAL UNTUK 1 USER ===
+if input_mode == "👤 Input Manual (1 Pengguna)":
+    st.subheader("Masukkan Data Pengguna")
 
-# ========================================
-# 📌 MODE 1: INPUT MANUAL
-# ========================================
-if input_mode == "📝 Input Manual":
-    st.subheader("Masukkan 1 Review Pengguna")
+    # Load model dan scaler
+    model_1user = joblib.load("kmeans_churned_model_1user.pkl")
+    scaler_1user = joblib.load("scaler_clustering_1user.pkl")
+    feature_names_1user = joblib.load("clustering_feature_names_1user.pkl")
 
-    name = st.text_input("👤 Nama Pengguna:")
-    star_rating = st.selectbox("⭐ Bintang Rating:", [1, 2, 3, 4, 5])
-    user_review = st.text_area("💬 Review:")
+    # Input manual
+    user_input = {}
+    for feat in feature_names_1user:
+        user_input[feat] = st.number_input(f"{feat}", value=0.0)
 
-    # Gunakan waktu default dalam zona Asia/Jakarta
-    wib = pytz.timezone("Asia/Jakarta")
-    now_wib = datetime.now(wib)
+    if st.button("🧭 Prediksi Cluster"):
+        input_df = pd.DataFrame([user_input])
+        input_scaled = scaler_1user.transform(input_df)
+        cluster = model_1user.predict(input_scaled)
+        st.success(f"✅ User ini diprediksi berada pada Cluster: {cluster[0]}")
 
-    review_day = st.date_input("📅 Tanggal Submit:", value=now_wib.date())
-    review_time = st.time_input("⏰ Waktu Submit:", value=now_wib.time())
-
-    # Gabungkan tanggal dan waktu (tanpa menggeser waktu)
-    review_datetime = datetime.combine(review_day, review_time)
-    review_datetime_wib = wib.localize(review_datetime)
-    review_date_str = review_datetime_wib.strftime("%Y-%m-%d %H:%M")
-
-    if st.button("Prediksi Sentimen"):
-        if user_review.strip() == "":
-            st.warning("🚨 Silakan isi review terlebih dahulu.")
-        else:
-            vec = vectorizer.transform([user_review])
-            pred = model.predict(vec)
-            label = label_encoder.inverse_transform(pred)[0]
-
-            # Buat hasil sebagai DataFrame
-            result_df = pd.DataFrame([{
-                "name": name if name else "(Anonim)",
-                "star_rating": star_rating,
-                "date": review_date_str,
-                "review": user_review,
-                "predicted_sentiment": label
-            }])
-
-            st.success("✅ Prediksi berhasil!")
-            st.dataframe(result_df)
-
-            # Tombol Download
-            csv_manual = result_df.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download Hasil Manual sebagai CSV",
-                data=csv_manual,
-                file_name="manual_review_prediction_perfect_piano.csv",
-                mime="text/csv"
-            )
-
-# ========================================
-# 📁 MODE 2: UPLOAD CSV
-# ========================================
+# === MODE 2: UPLOAD CSV UNTUK BANYAK USER ===
 else:
-    st.subheader("Upload File CSV Review")
-    uploaded_file = st.file_uploader("Pilih file CSV (harus memiliki kolom 'review')", type=['csv'])
+    st.subheader("Unggah File CSV")
 
-    if uploaded_file:
+    # Load model dan scaler
+    model_batch = joblib.load("kmeans_churned_batch_model.pkl")
+    scaler_batch = joblib.load("scaler_clustering_batch.pkl")
+    feature_names_batch = joblib.load("clustering_feature_names_batch.pkl")
+
+    uploaded_file = st.file_uploader("Unggah file CSV dengan fitur yang sesuai", type=["csv"])
+
+    if uploaded_file is not None:
         try:
             df = pd.read_csv(uploaded_file)
+            st.write("📄 Preview Data:", df.head())
 
-            # Validasi kolom
-            if 'review' not in df.columns:
-                st.error("❌ File harus memiliki kolom 'review'.")
+            # Validasi fitur
+            if not all(feat in df.columns for feat in feature_names_batch):
+                st.error("❌ Kolom fitur tidak lengkap. Harap pastikan nama kolom sesuai.")
             else:
-                # Prediksi
-                X_vec = vectorizer.transform(df['review'].fillna(""))
-                y_pred = model.predict(X_vec)
-                df['predicted_sentiment'] = label_encoder.inverse_transform(y_pred)
+                X = df[feature_names_batch]
+                X_scaled = scaler_batch.transform(X)
+                df['Predicted_Cluster'] = model_batch.predict(X_scaled)
 
-                st.success("✅ Prediksi berhasil!")
-                st.dataframe(df.head())
+                st.success("📈 Cluster berhasil diprediksi untuk semua pengguna.")
+                st.dataframe(df)
 
-                # Download hasil
-                csv_result = df.to_csv(index=False).encode('utf-8')
-                st.download_button(
-                    label="📥 Download Hasil CSV",
-                    data=csv_result,
-                    file_name="predicted_reviews_perfect_piano.csv",
-                    mime="text/csv"
-                )
+                # Tombol download
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button("💾 Download Hasil", csv, "clustered_users.csv", "text/csv")
         except Exception as e:
-            st.error(f"❌ Terjadi error saat membaca file: {e}")
+            st.error(f"⚠️ Terjadi kesalahan saat membaca file: {e}")
